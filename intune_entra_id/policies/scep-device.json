@@ -1,0 +1,18 @@
+{
+  "@odata.type": "#microsoft.graph.windows81SCEPCertificateProfile",
+  "displayName": "NET-EAPTLS-Device-NAC",
+  "description": "Entra device identity for a NAC that validates the issued GUID certificate subject; not AD computer mapping for NPS.",
+  "renewalThresholdPercentage": 20,
+  "keyStorageProvider": "useTpmKspOtherwiseFail",
+  "subjectNameFormat": "custom",
+  "subjectNameFormatString": "CN={{AAD_Device_ID}}",
+  "subjectAlternativeNameType": "none",
+  "certificateValidityPeriodValue": 6,
+  "certificateValidityPeriodScale": "months",
+  "extendedKeyUsages": [{"name": "Client Authentication", "objectIdentifier": "1.3.6.1.5.5.7.3.2"}],
+  "scepServerUrls": ["https://ndes.example.invalid/certsrv/mscep/mscep.dll"],
+  "keyUsage": "digitalSignature,keyEncipherment",
+  "keySize": "size2048",
+  "hashAlgorithm": "sha2",
+  "certificateStore": "machine"
+}

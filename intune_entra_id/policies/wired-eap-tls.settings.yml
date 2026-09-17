@@ -1,0 +1,21 @@
+---
+# Vendor-neutral Intune settings checklist, not a Graph POST body.
+# Select the equivalent fields in the Windows wired network profile UI.
+platform: Windows 10 and later
+network_type: wired
+authentication_mode: machine
+eap_type: TLS
+eap_type_number: 13
+client_certificate_profile: NET-EAPTLS-Device-NAC
+validate_server_certificate: true
+trusted_server_root_profile: REPLACE_WITH_SERVER_CA_PROFILE_ID
+allowed_radius_server_names:
+  - radius1.example.invalid
+  - radius2.example.invalid
+prompt_for_untrusted_server: false
+wired_autoconfig_service: automatic
+pilot_assignment_group: REPLACE_WITH_PILOT_DEVICE_GROUP_ID
+requirements:
+  - Install the server trust chain before enabling enforced wired authentication.
+  - Select the machine SCEP certificate and validate EKU and identity in the lab.
+  - Keep a restricted physical enrollment/recovery path for devices without certificates.

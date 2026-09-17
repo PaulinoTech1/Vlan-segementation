@@ -1,0 +1,10 @@
+---
+- name: Audit owned VLAN, switchport and ACL state without writing
+  hosts: switches
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    enforce: false
+  roles:
+    - vlan_enforce

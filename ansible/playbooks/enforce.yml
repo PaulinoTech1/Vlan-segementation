@@ -1,0 +1,10 @@
+---
+- name: Reconcile owned resources one switch at a time
+  hosts: switches
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    enforce: true
+  roles:
+    - vlan_enforce

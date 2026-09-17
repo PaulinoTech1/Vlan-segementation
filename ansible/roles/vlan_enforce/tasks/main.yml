@@ -1,0 +1,68 @@
+---
+- name: Require a reviewed host-specific golden resource model
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/../golden/{{ inventory_hostname }}.yml"
+
+- name: Guard real writes
+  ansible.builtin.assert:
+    that:
+      - golden_vlans | length > 0
+      - golden_l2_interfaces | length > 0
+      - not (enforce | bool) or change_ticket | length > 0
+    fail_msg: Render golden files and provide a change_ticket for enforcement.
+
+- name: Create private controller artifact directory
+  ansible.builtin.file:
+    path: "{{ artifact_dir }}/{{ inventory_hostname }}"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  check_mode: false
+
+- name: Back up running configuration before real enforcement
+  cisco.ios.ios_config:
+    backup: true
+    backup_options:
+      dir_path: "{{ artifact_dir }}/{{ inventory_hostname }}"
+  when: enforce | bool and not ansible_check_mode
+  no_log: true
+
+- name: Audit owned resource state
+  ansible.builtin.include_tasks: resources.yml
+  vars:
+    resource_audit: true
+
+- name: Record a secret-free drift summary
+  ansible.builtin.copy:
+    content: "{{ {'host': inventory_hostname, 'vlans': vlan_result.changed, 'switchports': l2_result.changed, 'acls': acl_result.changed | default(false), 'bindings': binding_result.changed | default(false)} | to_nice_json }}"
+    dest: "{{ artifact_dir }}/{{ inventory_hostname }}/drift.json"
+    mode: '0600'
+  delegate_to: localhost
+  check_mode: false
+
+- name: Remediate the same owned resource model
+  ansible.builtin.include_tasks: resources.yml
+  vars:
+    resource_audit: false
+  when: enforce | bool and not ansible_check_mode
+
+- name: Verify convergence before saving
+  ansible.builtin.include_tasks: resources.yml
+  vars:
+    resource_audit: true
+  when: enforce | bool and not ansible_check_mode
+
+- name: Reject nonconvergent configuration
+  ansible.builtin.assert:
+    that:
+      - not vlan_result.changed
+      - not l2_result.changed
+      - not (acl_result.changed | default(false))
+      - not (binding_result.changed | default(false))
+  when: enforce | bool and not ansible_check_mode
+
+- name: Save verified running state
+  cisco.ios.ios_config:
+    save_when: modified
+  when: enforce | bool and not ansible_check_mode
+  no_log: true

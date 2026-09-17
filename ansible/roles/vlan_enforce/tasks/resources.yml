@@ -1,0 +1,38 @@
+---
+# VLANs are merged: foreign VLAN deletion is never inferred from an omission.
+# Replaced switchports and ACLs are authoritative ONLY for listed resources.
+- name: Reconcile owned VLAN names and availability
+  cisco.ios.ios_vlans:
+    config: "{{ golden_vlans }}"
+    state: merged
+  check_mode: "{{ resource_audit | bool }}"
+  register: vlan_result
+  no_log: true
+
+- name: Reconcile listed access and trunk interfaces including allowed VLAN drift
+  cisco.ios.ios_l2_interfaces:
+    config: "{{ golden_l2_interfaces }}"
+    state: replaced
+  check_mode: "{{ resource_audit | bool }}"
+  register: l2_result
+  no_log: true
+
+- name: Reconcile named ACL contents including unauthorized permit entries
+  cisco.ios.ios_acls:
+    config: "{{ golden_acls }}"
+    state: replaced
+  check_mode: "{{ resource_audit | bool }}"
+  register: acl_result
+  when: golden_acls | length > 0
+  no_log: true
+
+- name: Restore inbound SVI ACL attachment if removed or replaced
+  cisco.ios.ios_config:
+    parents: "interface {{ item.interface }}"
+    lines:
+      - "ip access-group {{ item.acl }} in"
+    match: line
+  loop: "{{ golden_bindings }}"
+  check_mode: "{{ resource_audit | bool }}"
+  register: binding_result
+  no_log: true

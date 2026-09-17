@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.key
+*.pfx
+*.p12
+ansible/group_vars/*/vault.yml
+artifacts/
+intune_entra_id/output/
+*.retry

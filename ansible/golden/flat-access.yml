@@ -1,0 +1,29 @@
+golden_vlans:
+- vlan_id: 10
+  name: CORPORATE
+  state: active
+  shutdown: disabled
+- vlan_id: 999
+  name: UNUSED_NATIVE
+  state: active
+  shutdown: disabled
+golden_l2_interfaces:
+- name: GigabitEthernet1/0/23
+  mode: trunk
+  trunk:
+    native_vlan: 999
+    allowed_vlans: '10'
+- name: GigabitEthernet1/0/1
+  mode: access
+  access:
+    vlan: 10
+- name: GigabitEthernet1/0/2
+  mode: access
+  access:
+    vlan: 10
+- name: GigabitEthernet1/0/3
+  mode: access
+  access:
+    vlan: 10
+golden_acls: []
+golden_bindings: []

@@ -1,0 +1,112 @@
+{
+  "name": "Segmented Wired Star",
+  "segmented": true,
+  "ha": false,
+  "vlans": [
+    {
+      "id": 10,
+      "name": "CORPORATE",
+      "prefix": "10.10.0"
+    },
+    {
+      "id": 20,
+      "name": "GUEST",
+      "prefix": "10.20.0"
+    },
+    {
+      "id": 30,
+      "name": "IOT",
+      "prefix": "10.30.0"
+    },
+    {
+      "id": 40,
+      "name": "QUARANTINE",
+      "prefix": "10.40.0"
+    },
+    {
+      "id": 99,
+      "name": "MANAGEMENT",
+      "prefix": "10.99.0"
+    },
+    {
+      "id": 999,
+      "name": "UNUSED_NATIVE",
+      "prefix": "10.255.255"
+    }
+  ],
+  "devices": [
+    {
+      "name": "seg-core",
+      "core": true,
+      "index": 1,
+      "wan_port": "GigabitEthernet1/0/24",
+      "trunks": [
+        "GigabitEthernet1/0/1"
+      ],
+      "ports": [],
+      "unused_range": "GigabitEthernet1/0/2 - 23"
+    },
+    {
+      "name": "seg-access",
+      "core": false,
+      "index": 1,
+      "management_octet": 12,
+      "trunks": [
+        "GigabitEthernet1/0/23"
+      ],
+      "ports": [
+        {
+          "name": "GigabitEthernet1/0/1",
+          "kind": "dot1x",
+          "vlan": 40
+        },
+        {
+          "name": "GigabitEthernet1/0/2",
+          "kind": "guest",
+          "vlan": 20
+        },
+        {
+          "name": "GigabitEthernet1/0/3",
+          "kind": "iot",
+          "vlan": 30
+        },
+        {
+          "name": "GigabitEthernet1/0/4",
+          "kind": "management",
+          "vlan": 99
+        },
+        {
+          "name": "GigabitEthernet1/0/5",
+          "kind": "management",
+          "vlan": 99
+        },
+        {
+          "name": "GigabitEthernet1/0/6",
+          "kind": "management",
+          "vlan": 99
+        },
+        {
+          "name": "GigabitEthernet1/0/7",
+          "kind": "management",
+          "vlan": 99
+        },
+        {
+          "name": "GigabitEthernet1/0/8",
+          "kind": "management",
+          "vlan": 99
+        },
+        {
+          "name": "GigabitEthernet1/0/9",
+          "kind": "management",
+          "vlan": 99
+        },
+        {
+          "name": "GigabitEthernet1/0/10",
+          "kind": "management",
+          "vlan": 99
+        }
+      ],
+      "unused_range": "GigabitEthernet1/0/11 - 22"
+    }
+  ]
+}

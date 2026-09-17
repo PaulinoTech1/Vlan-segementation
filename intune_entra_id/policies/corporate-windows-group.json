@@ -1,0 +1,10 @@
+{
+  "displayName": "NET-Corporate-Windows-Eligible",
+  "description": "Ownership and platform scope only. Compliance is independently evaluated by NAC.",
+  "mailEnabled": false,
+  "mailNickname": "net-corporate-windows-eligible",
+  "securityEnabled": true,
+  "groupTypes": ["DynamicMembership"],
+  "membershipRule": "(device.deviceOSType -eq \"Windows\") and (device.deviceOwnership -eq \"Company\") and (device.managementType -eq \"MDM\")",
+  "membershipRuleProcessingState": "On"
+}

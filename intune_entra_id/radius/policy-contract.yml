@@ -1,0 +1,26 @@
+---
+# Vendor-neutral adapter specification, NOT directly loadable NPS/FreeRADIUS syntax.
+authentication:
+  method: EAP-TLS
+  require_client_auth_eku: true
+  require_trusted_issuing_ca: true
+  require_revocation_check: true
+  revocation_unavailable: reject
+  identity_source: validated_certificate_subject_cn_guid
+  require_issuer_template_restricted_to_intune_device_enrollment: true
+authorization:
+  evaluator: evaluate.py
+  fail_on_timeout_or_invalid_output: reject
+  snapshot_max_age_minutes: 15
+  device_sync_max_age_hours: 24
+  eligible_and_compliant_vlan: 10
+  known_device_other_states_vlan: 40
+  missing_or_duplicate_device: reject
+  session_timeout_seconds: 900
+  radius_reply:
+    Tunnel-Type: 13
+    Tunnel-Medium-Type: 6
+    Tunnel-Private-Group-ID: string_vlan_number
+    Termination-Action: 1
+  unknown_radius_clients: reject
+  validate_message_authenticator: true

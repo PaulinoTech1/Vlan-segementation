@@ -1,0 +1,19 @@
+! OPTIONAL overlay: render with site-specific trust paths after DHCP validation.
+! Do not paste this file unchanged. DAI without bindings can disconnect static hosts.
+ip dhcp snooping
+ip dhcp snooping vlan {{ protected_vlan_list }}
+ip arp inspection vlan {{ protected_vlan_list }}
+{% for port in dhcp_server_facing_trunks %}
+interface {{ port }}
+ ip dhcp snooping trust
+ ip arp inspection trust
+{% endfor %}
+{% for port in dhcp_client_ports %}
+interface {{ port }}
+ ip dhcp snooping limit rate 15
+ ip arp inspection limit rate 15
+ ip verify source
+{% endfor %}
+! Configure persistent snooping bindings and static IP/ARP bindings before enabling
+! IP Source Guard for reserved/static devices. Verify Option 82 behavior with DHCP.
+! Never mark an endpoint port trusted merely to work around failed validation.

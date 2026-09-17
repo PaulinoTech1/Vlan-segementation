@@ -1,0 +1,78 @@
+golden_vlans:
+- vlan_id: 10
+  name: CORPORATE
+  state: active
+  shutdown: disabled
+- vlan_id: 20
+  name: GUEST
+  state: active
+  shutdown: disabled
+- vlan_id: 30
+  name: IOT
+  state: active
+  shutdown: disabled
+- vlan_id: 40
+  name: QUARANTINE
+  state: active
+  shutdown: disabled
+- vlan_id: 99
+  name: MANAGEMENT
+  state: active
+  shutdown: disabled
+- vlan_id: 999
+  name: UNUSED_NATIVE
+  state: active
+  shutdown: disabled
+golden_l2_interfaces:
+- name: GigabitEthernet1/0/23
+  mode: trunk
+  trunk:
+    native_vlan: 999
+    allowed_vlans: 10,20,30,40,99
+- name: GigabitEthernet1/0/24
+  mode: trunk
+  trunk:
+    native_vlan: 999
+    allowed_vlans: 10,20,30,40,99
+- name: GigabitEthernet1/0/1
+  mode: access
+  access:
+    vlan: 40
+- name: GigabitEthernet1/0/2
+  mode: access
+  access:
+    vlan: 20
+- name: GigabitEthernet1/0/3
+  mode: access
+  access:
+    vlan: 30
+- name: GigabitEthernet1/0/4
+  mode: access
+  access:
+    vlan: 99
+- name: GigabitEthernet1/0/5
+  mode: access
+  access:
+    vlan: 99
+- name: GigabitEthernet1/0/6
+  mode: access
+  access:
+    vlan: 99
+- name: GigabitEthernet1/0/7
+  mode: access
+  access:
+    vlan: 99
+- name: GigabitEthernet1/0/8
+  mode: access
+  access:
+    vlan: 99
+- name: GigabitEthernet1/0/9
+  mode: access
+  access:
+    vlan: 99
+- name: GigabitEthernet1/0/10
+  mode: access
+  access:
+    vlan: 99
+golden_acls: []
+golden_bindings: []

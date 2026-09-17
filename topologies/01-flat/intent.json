@@ -1,0 +1,57 @@
+{
+  "name": "Flat Essential Star",
+  "segmented": false,
+  "ha": false,
+  "vlans": [
+    {
+      "id": 10,
+      "name": "CORPORATE",
+      "prefix": "10.10.0"
+    },
+    {
+      "id": 999,
+      "name": "UNUSED_NATIVE",
+      "prefix": "10.255.255"
+    }
+  ],
+  "devices": [
+    {
+      "name": "flat-core",
+      "core": true,
+      "index": 1,
+      "wan_port": "GigabitEthernet1/0/24",
+      "trunks": [
+        "GigabitEthernet1/0/1"
+      ],
+      "ports": [],
+      "unused_range": "GigabitEthernet1/0/2 - 23"
+    },
+    {
+      "name": "flat-access",
+      "core": false,
+      "index": 1,
+      "management_octet": 12,
+      "trunks": [
+        "GigabitEthernet1/0/23"
+      ],
+      "ports": [
+        {
+          "name": "GigabitEthernet1/0/1",
+          "kind": "baseline",
+          "vlan": 10
+        },
+        {
+          "name": "GigabitEthernet1/0/2",
+          "kind": "guest",
+          "vlan": 10
+        },
+        {
+          "name": "GigabitEthernet1/0/3",
+          "kind": "iot",
+          "vlan": 10
+        }
+      ],
+      "unused_range": "GigabitEthernet1/0/4 - 22"
+    }
+  ]
+}

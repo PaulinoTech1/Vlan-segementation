@@ -1,0 +1,17 @@
+---
+- name: Load golden device
+  ansible.builtin.include_vars:
+    file: "{{ golden_path }}"
+
+# ios_vlans 11.5.1 probes device type before evaluating rendered state.
+# Validate that resource's full argument schema in validate-ansible-models.py.
+- name: Validate switchport model
+  cisco.ios.ios_l2_interfaces:
+    config: "{{ golden_l2_interfaces }}"
+    state: rendered
+
+- name: Validate ACL model
+  cisco.ios.ios_acls:
+    config: "{{ golden_acls }}"
+    state: rendered
+  when: golden_acls | length > 0

@@ -1,0 +1,139 @@
+! GENERATED EXAMPLE: {{ device.name }} / {{ topology.name }}
+! IOS XE classic authentication CLI; validate exact release before applying.
+! Bootstrap manually with console/OOB. Secret markers MUST be replaced securely.
+hostname {{ device.name }}
+no ip http server
+no ip http secure-server
+ip domain name example.invalid
+ip ssh version 2
+service password-encryption
+! Type 7 obfuscation is not encryption. Use platform-supported type 6 secrets.
+username breakglass privilege 15 secret REPLACE_WITH_VAULT_SECRET
+aaa new-model
+aaa authentication login default local
+aaa authorization exec default local
+ip access-list standard ADMIN_SSH
+ permit host 10.99.0.50
+ deny any log
+line vty 0 15
+ access-class ADMIN_SSH in
+ transport input ssh
+ exec-timeout 10 0
+ login authentication default
+spanning-tree mode rapid-pvst
+vtp mode transparent
+{% for vlan in topology.vlans %}
+vlan {{ vlan.id }}
+ name {{ vlan.name }}
+{% endfor %}
+{% if topology.segmented %}
+aaa authentication dot1x default group NAC
+aaa authorization network default group NAC
+aaa accounting dot1x default start-stop group NAC
+radius server NAC1
+ address ipv4 10.99.0.10 auth-port 1812 acct-port 1813
+ key REPLACE_WITH_RADIUS_SECRET
+radius server NAC2
+ address ipv4 10.99.0.11 auth-port 1812 acct-port 1813
+ key REPLACE_WITH_RADIUS_SECRET
+aaa group server radius NAC
+ server name NAC1
+ server name NAC2
+ip radius source-interface Vlan99
+dot1x system-auth-control
+{% endif %}
+{% if device.core %}
+ip routing
+{% if topology.ha %}
+spanning-tree vlan {{ topology.allowed }} priority {{ 24576 if device.index == 1 else 28672 }}
+track 1 interface {{ device.wan_port }} line-protocol
+{% else %}
+spanning-tree vlan {{ topology.allowed }} priority 24576
+{% endif %}
+{% for acl in acls %}
+ip access-list extended {{ acl.name }}
+{% for line in acl.lines %}
+ {{ line }}
+{% endfor %}
+{% endfor %}
+{% for vlan in topology.vlans if vlan.id != 999 %}
+interface Vlan{{ vlan.id }}
+ description {{ vlan.name }}_GATEWAY
+ ip address {{ vlan.prefix }}.{{ device.index + 1 if topology.ha else 1 }} 255.255.255.0
+ no ip redirects
+ no ip proxy-arp
+{% if vlan.id != 99 %}
+ ip helper-address 10.99.0.20
+{% endif %}
+{% if topology.segmented and vlan.id != 99 %}
+ ip access-group VLAN{{ vlan.id }}_IN in
+{% endif %}
+{% if topology.ha %}
+ standby version 2
+ standby {{ vlan.id }} ip {{ vlan.prefix }}.1
+ standby {{ vlan.id }} priority {{ 110 if device.index == 1 else 100 }}
+ standby {{ vlan.id }} preempt delay minimum 60
+ standby {{ vlan.id }} authentication md5 key-string REPLACE_WITH_HSRP_SECRET
+ standby {{ vlan.id }} track 1 decrement 30
+{% endif %}
+ no shutdown
+{% endfor %}
+interface {{ device.wan_port }}
+ description FIREWALL_ROUTED_TRANSIT
+ no switchport
+ ip address 172.31.{{ device.index }}.2 255.255.255.252
+ no shutdown
+ip route 0.0.0.0 0.0.0.0 172.31.{{ device.index }}.1
+{% else %}
+no ip routing
+interface Vlan{{ 99 if topology.segmented else 10 }}
+ ip address {{ '10.99.0' if topology.segmented else '10.10.0' }}.{{ device.management_octet }} 255.255.255.0
+ no shutdown
+ip default-gateway {{ '10.99.0.1' if topology.segmented else '10.10.0.1' }}
+{% endif %}
+{% for port in device.trunks %}
+interface {{ port }}
+ description EXPLICIT_8021Q_TRUNK
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan {{ topology.allowed }}
+ switchport nonegotiate
+ no shutdown
+{% endfor %}
+{% for port in device.ports %}
+interface {{ port.name }}
+ description {{ port.kind | upper }}_ENDPOINT
+ switchport mode access
+ switchport access vlan {{ port.vlan }}
+ switchport nonegotiate
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+{% if port.kind == 'dot1x' %}
+ authentication port-control auto
+ authentication host-mode single-host
+ authentication periodic
+ authentication timer reauthenticate server
+ dot1x pae authenticator
+! No MAB, guest auth-fail or critical-auth corporate fallback.
+{% else %}
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+{% endif %}
+ no shutdown
+{% endfor %}
+interface range {{ device.unused_range }}
+ description UNUSED_DISABLED
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+{% if not device.core and not topology.ha %}
+interface GigabitEthernet1/0/24
+ description UNUSED_DISABLED
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+{% endif %}
+! Enable DHCP snooping / DAI only after validating DHCP paths and static bindings.
+! IPv6 routing intentionally absent; enforce RA Guard and IPv6 policy before enabling.

@@ -1,0 +1,392 @@
+golden_vlans:
+- vlan_id: 10
+  name: CORPORATE
+  state: active
+  shutdown: disabled
+- vlan_id: 20
+  name: GUEST
+  state: active
+  shutdown: disabled
+- vlan_id: 30
+  name: IOT
+  state: active
+  shutdown: disabled
+- vlan_id: 40
+  name: QUARANTINE
+  state: active
+  shutdown: disabled
+- vlan_id: 99
+  name: MANAGEMENT
+  state: active
+  shutdown: disabled
+- vlan_id: 999
+  name: UNUSED_NATIVE
+  state: active
+  shutdown: disabled
+golden_l2_interfaces:
+- name: GigabitEthernet1/0/1
+  mode: trunk
+  trunk:
+    native_vlan: 999
+    allowed_vlans: 10,20,30,40,99
+- name: GigabitEthernet1/0/2
+  mode: trunk
+  trunk:
+    native_vlan: 999
+    allowed_vlans: 10,20,30,40,99
+golden_acls:
+- afi: ipv4
+  acls:
+  - name: VLAN10_IN
+    acl_type: extended
+    aces:
+    - sequence: 10
+      grant: permit
+      protocol: udp
+      source:
+        any: true
+        port_protocol:
+          eq: bootpc
+      destination:
+        any: true
+        port_protocol:
+          eq: bootps
+    - sequence: 20
+      grant: permit
+      protocol: udp
+      source: &id001
+        address: 10.10.0.0
+        wildcard_bits: 0.0.0.255
+      destination:
+        host: 224.0.0.102
+        port_protocol:
+          eq: '1985'
+    - sequence: 30
+      grant: permit
+      protocol: udp
+      source: *id001
+      destination:
+        host: 10.99.0.53
+        port_protocol:
+          eq: domain
+    - sequence: 40
+      grant: permit
+      protocol: tcp
+      source: *id001
+      destination:
+        host: 10.99.0.53
+        port_protocol:
+          eq: domain
+    - sequence: 50
+      grant: permit
+      protocol: udp
+      source: *id001
+      destination:
+        host: 10.99.0.123
+        port_protocol:
+          eq: ntp
+    - sequence: 60
+      grant: permit
+      protocol: tcp
+      source: *id001
+      destination:
+        host: 10.99.0.25
+        port_protocol:
+          eq: '443'
+    - sequence: 70
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 10.0.0.0
+        wildcard_bits: 0.255.255.255
+    - sequence: 80
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 172.16.0.0
+        wildcard_bits: 0.15.255.255
+    - sequence: 90
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 192.168.0.0
+        wildcard_bits: 0.0.255.255
+    - sequence: 100
+      grant: permit
+      protocol: ip
+      source: *id001
+      destination:
+        any: true
+    - sequence: 110
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        any: true
+  - name: VLAN20_IN
+    acl_type: extended
+    aces:
+    - sequence: 10
+      grant: permit
+      protocol: udp
+      source:
+        any: true
+        port_protocol:
+          eq: bootpc
+      destination:
+        any: true
+        port_protocol:
+          eq: bootps
+    - sequence: 20
+      grant: permit
+      protocol: udp
+      source: &id002
+        address: 10.20.0.0
+        wildcard_bits: 0.0.0.255
+      destination:
+        host: 224.0.0.102
+        port_protocol:
+          eq: '1985'
+    - sequence: 30
+      grant: permit
+      protocol: udp
+      source: *id002
+      destination:
+        host: 10.99.0.53
+        port_protocol:
+          eq: domain
+    - sequence: 40
+      grant: permit
+      protocol: tcp
+      source: *id002
+      destination:
+        host: 10.99.0.53
+        port_protocol:
+          eq: domain
+    - sequence: 50
+      grant: permit
+      protocol: udp
+      source: *id002
+      destination:
+        host: 10.99.0.123
+        port_protocol:
+          eq: ntp
+    - sequence: 60
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 10.0.0.0
+        wildcard_bits: 0.255.255.255
+    - sequence: 70
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 172.16.0.0
+        wildcard_bits: 0.15.255.255
+    - sequence: 80
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 192.168.0.0
+        wildcard_bits: 0.0.255.255
+    - sequence: 90
+      grant: permit
+      protocol: ip
+      source: *id002
+      destination:
+        any: true
+    - sequence: 100
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        any: true
+  - name: VLAN30_IN
+    acl_type: extended
+    aces:
+    - sequence: 10
+      grant: permit
+      protocol: udp
+      source:
+        any: true
+        port_protocol:
+          eq: bootpc
+      destination:
+        any: true
+        port_protocol:
+          eq: bootps
+    - sequence: 20
+      grant: permit
+      protocol: udp
+      source: &id003
+        address: 10.30.0.0
+        wildcard_bits: 0.0.0.255
+      destination:
+        host: 224.0.0.102
+        port_protocol:
+          eq: '1985'
+    - sequence: 30
+      grant: permit
+      protocol: udp
+      source: *id003
+      destination:
+        host: 10.99.0.53
+        port_protocol:
+          eq: domain
+    - sequence: 40
+      grant: permit
+      protocol: tcp
+      source: *id003
+      destination:
+        host: 10.99.0.53
+        port_protocol:
+          eq: domain
+    - sequence: 50
+      grant: permit
+      protocol: udp
+      source: *id003
+      destination:
+        host: 10.99.0.123
+        port_protocol:
+          eq: ntp
+    - sequence: 60
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 10.0.0.0
+        wildcard_bits: 0.255.255.255
+    - sequence: 70
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 172.16.0.0
+        wildcard_bits: 0.15.255.255
+    - sequence: 80
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 192.168.0.0
+        wildcard_bits: 0.0.255.255
+    - sequence: 90
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        any: true
+  - name: VLAN40_IN
+    acl_type: extended
+    aces:
+    - sequence: 10
+      grant: permit
+      protocol: udp
+      source:
+        any: true
+        port_protocol:
+          eq: bootpc
+      destination:
+        any: true
+        port_protocol:
+          eq: bootps
+    - sequence: 20
+      grant: permit
+      protocol: udp
+      source: &id004
+        address: 10.40.0.0
+        wildcard_bits: 0.0.0.255
+      destination:
+        host: 224.0.0.102
+        port_protocol:
+          eq: '1985'
+    - sequence: 30
+      grant: permit
+      protocol: udp
+      source: *id004
+      destination:
+        host: 10.99.0.53
+        port_protocol:
+          eq: domain
+    - sequence: 40
+      grant: permit
+      protocol: tcp
+      source: *id004
+      destination:
+        host: 10.99.0.53
+        port_protocol:
+          eq: domain
+    - sequence: 50
+      grant: permit
+      protocol: udp
+      source: *id004
+      destination:
+        host: 10.99.0.123
+        port_protocol:
+          eq: ntp
+    - sequence: 60
+      grant: permit
+      protocol: tcp
+      source: *id004
+      destination:
+        host: 10.99.0.25
+        port_protocol:
+          eq: '443'
+    - sequence: 70
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 10.0.0.0
+        wildcard_bits: 0.255.255.255
+    - sequence: 80
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 172.16.0.0
+        wildcard_bits: 0.15.255.255
+    - sequence: 90
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        address: 192.168.0.0
+        wildcard_bits: 0.0.255.255
+    - sequence: 100
+      grant: deny
+      protocol: ip
+      source:
+        any: true
+      destination:
+        any: true
+golden_bindings:
+- interface: Vlan10
+  acl: VLAN10_IN
+- interface: Vlan20
+  acl: VLAN20_IN
+- interface: Vlan30
+  acl: VLAN30_IN
+- interface: Vlan40
+  acl: VLAN40_IN

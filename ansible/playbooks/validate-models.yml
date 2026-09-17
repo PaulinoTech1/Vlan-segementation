@@ -1,0 +1,15 @@
+---
+- name: Validate every golden model using Cisco resource renderers offline
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Cisco's action plugin requires network_cli even for offline rendered state.
+    # Rendered resource tasks never fetch running state or open a switch session.
+    ansible_connection: ansible.netcommon.network_cli
+    ansible_network_os: cisco.ios.ios
+  tasks:
+    - name: Render each device model without contacting a switch
+      ansible.builtin.include_tasks: validate-one.yml
+      loop: "{{ query('ansible.builtin.fileglob', playbook_dir + '/../golden/*.yml') }}"
+      loop_control:
+        loop_var: golden_path
