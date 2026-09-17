@@ -143,6 +143,8 @@ intune_entra_id/
   radius/          fail-closed evaluator and vendor-neutral adapter contract
 docs/              addressing, deployment, identity, HA, validation,
                    ai-agent-threat-model, ai-network-validation, ai-trust-zone-logging
+siem_integration/   SIEM boundary: schemas, examples, syslog, Ansible
+                   drift-event exporter, telemetry and detection docs
 scripts/           deterministic renderer and validator
 tests/             authorization and traffic-boundary tests
 .github/workflows/ offline checks and Ansible syntax validation
@@ -207,6 +209,72 @@ For Intune, follow [the PowerShell workflow](docs/identity-integration.md): pilo
 ## Validation scope
 
 CI parses data and PowerShell, verifies deterministic generated files, runs authorization/boundary tests, syntax-checks Ansible, validates Cisco resource schemas, and renders switchport/ACL commands offline. AI trust zone checks include the `test_ai_*` boundary tests, the `validate-ai-trust-zone.yml` desired-state assertions (broad-permit detection, established-only management return, deny-all ordering, HA core consistency), and the `scripts/validate.py` topology invariants (VLAN 50 present in topologies 2 and 3, absent from topology 1). It does not emulate IOS, issue certificates, verify Graph permissions or prove HA convergence. Dependency pins provide repeatability and need periodic review.
+
+## SIEM Integration and Security Telemetry
+
+Segmentation and ACLs are preventative controls. They stop what the policy forbids, but they do not tell you what tried to happen. This repository is therefore designed so that network and identity controls **produce security telemetry**, that telemetry is **normalized and exported**, and an **external SIEM** performs correlation, detection, investigation, and alerting.
+
+```text
+Control
+    |
+    v
+Telemetry Generated
+    |
+    v
+Normalization
+    |
+    v
+Secure Transport
+    |
+    v
+External SIEM
+    |
+    v
+Correlation / Detection
+```
+
+The five layers are deliberately separated:
+
+1. **Telemetry source**: the device or service that observed the event (firewall, switch, RADIUS, Entra ID, Ansible job).
+2. **Telemetry transport**: how the event moves (syslog, syslog over TLS, Windows Event Forwarding, HTTPS API, Graph API, structured JSON files).
+3. **Normalization**: conversion into the common event baseline documented in [siem_integration/docs/event-normalization.md](siem_integration/docs/event-normalization.md).
+4. **SIEM ingestion boundary**: the point where this repository's responsibility ends. Schemas, examples, and exporters live here; no SIEM platform does.
+5. **Detection and correlation**: owned entirely by the external SIEM. This repository does not provide SOC monitoring, dashboards, threat hunting, or case management.
+
+```mermaid
+flowchart TD
+    FW[Firewall logs] --> COL[Telemetry collection / normalization]
+    SW[Switch and VLAN events] --> COL
+    DOT[802.1X / RADIUS events] --> COL
+    ANS[Ansible drift events] --> COL
+    ID[Entra ID / Intune events] --> COL
+    AI[AI / Automation zone events] --> COL
+    COL --> SIEM[External SIEM]
+    SIEM --> CORR[Correlation]
+    SIEM --> DET[Detection]
+    SIEM --> INV[Investigation]
+    SIEM --> ALERT[Alerting]
+```
+
+### Telemetry sources
+
+| Telemetry Source | Example Events | Security Value | Suggested Transport |
+|---|---|---|---|
+| Firewalls | Allow/deny events, rule changes, administrative logins, inter-VLAN policy violations | Detect segmentation bypass attempts and unauthorized rule changes | Syslog, syslog over TLS |
+| Layer 3 switches | SVI ACL deny hits, inter-VLAN denies | Detect east-west policy violations at the routing boundary | Syslog, syslog over TLS |
+| Managed switches | Port state changes, VLAN/trunk changes, port-security violations, configuration modifications | Detect unauthorized topology changes and unexpected VLAN assignments | Syslog, syslog over TLS |
+| 802.1X / RADIUS / NPS | Authentication success/failure, method, policy selected, assigned or rejected VLAN | Detect credential attacks and authorization faults | Syslog, Windows Event Forwarding, NPS log files |
+| Microsoft Entra ID | Sign-ins, Conditional Access results, administrative role changes, service principal activity | Detect identity attacks and privilege changes | Microsoft Graph API, HTTPS API |
+| Microsoft Intune | Device compliance state, device registration or removal | Detect unhealthy or unknown devices joining the network | Microsoft Graph API |
+| Ansible drift jobs | `configuration_drift` events with expected vs observed state | Detect unauthorized configuration changes, including AI zone policy drift | Structured JSON file or stdout |
+| Administrative changes | Configuration diffs with actor identity where available | Accountability for management-plane actions | Syslog, structured JSON |
+| DHCP / DNS | Lease anomalies, unexpected DNS destinations | Detect rogue devices and suspicious name resolution | Syslog |
+| AI / Automation Trust Zone | AI policy violations, unapproved outbound connections, repeated ACL denials | Detect compromised agents and exfiltration attempts | Syslog over TLS, structured JSON |
+| AI agent / MCP audit events, when available | Tool invocations, workload identity authentication | Correlate network flows to agent behavior for higher-confidence investigation | HTTPS API, structured JSON |
+
+Not every platform supports every transport; vendor-specific capabilities are labeled in [siem_integration/docs/telemetry-sources.md](siem_integration/docs/telemetry-sources.md). Vendors such as Microsoft Sentinel, Splunk, Elastic, Wazuh, Axiom, QRadar, and Graylog are possible downstream consumers only. None are required, and no SIEM-specific dashboards are implemented.
+
+Start here: [SIEM integration overview](siem_integration/README.md), [telemetry sources](siem_integration/docs/telemetry-sources.md), [event schemas](siem_integration/docs/event-normalization.md), [detection use cases](siem_integration/docs/detection-use-cases.md), and the [monitoring requirements](SECURITY.md#security-monitoring-and-siem-integration) in SECURITY.md.
 
 ## References
 
