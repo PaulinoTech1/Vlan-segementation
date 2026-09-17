@@ -73,7 +73,7 @@ sequenceDiagram
     R->>P: Evaluate verified certificate GUID
     P-->>R: Corporate 10 / Quarantine 40 / reject
     R-->>S: Access-Accept tunnel attributes or Access-Reject
-    S-->>E: Authorized VLAN; DHCP renewal on VLAN change
+    S-->>E: Authorized VLAN, DHCP renewal on VLAN change
 ```
 
 Intune delivers certificates; Entra dynamic groups scope eligible devices; RADIUS authorizes the VLAN. Conditional Access does not configure switch ports. The evaluator needs a NAC adapter and is not an NPS plugin. Traditional NPS uses AD-backed identity mapping rather than native Graph compliance evaluation. See [integration and NPS deployment](docs/identity-integration.md).
