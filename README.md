@@ -117,7 +117,7 @@ Default AI VLAN policy intent (implemented in `scripts/render.py`, function `ai_
 - AI_AUTOMATION to corporate servers: DENY except the explicitly approved inference/API service
 - AI_AUTOMATION to DNS/NTP: ALLOW the approved resolver and NTP source only
 - AI_AUTOMATION to Internet: ALLOW only the explicitly approved HTTPS egress destinations
-- MANAGEMENT_VLAN to AI_AUTOMATION: administrative protocols allowed; the stateless return path is an `established`-only ACE, so AI-initiated connections to management still deny
+- MANAGEMENT_VLAN to AI_AUTOMATION: not restricted by any ingress ACL on Vlan99; management-originated protocols into VLAN 50 are currently unrestricted (known gap, not least-privilege). The AI-side return path is an `established`-only ACE, so AI-initiated connections to management still deny
 - USER_VLAN to AI_AUTOMATION: ALLOW only the approved user-facing application interface
 
 Reference values (VLAN 50, 10.50.0.0/24, AI_AUTOMATION) are examples driven by the `ai_trust_zone` block in each segmented `intent.json`; change them there and regenerate. Further reading: [AI agent threat model](docs/ai-agent-threat-model.md), [AI network validation](docs/ai-network-validation.md), [AI trust zone logging](docs/ai-trust-zone-logging.md).
@@ -134,7 +134,8 @@ ansible/
   inventory.ini, ansible.cfg, requirements.yml, requirements.txt
   group_vars/all.yml
   golden/          generated per-switch resource models
-  playbooks/       audit_only.yml, enforce.yml, validate-ai-trust-zone.yml
+  playbooks/       audit_only.yml, enforce.yml, validate-ai-trust-zone.yml,
+                   validate-models.yml, validate-one.yml
                    (audit.yml is a backwards-compatibility shim)
   roles/vlan_enforce/tasks/{main,resources}.yml
 intune_entra_id/
