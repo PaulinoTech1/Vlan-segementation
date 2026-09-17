@@ -8,6 +8,43 @@ Use a dedicated issuing CA/template that permits only authenticated Intune devic
 
 The eligibility dynamic group uses ownership/platform/MDM attributes; compliance is independently read from Intune. Do not use a speculative `device.isCompliant` dynamic membership rule. Group evaluation and Intune reporting are eventually consistent.
 
+## Human identity versus non-human workload identity
+
+The model above authorizes human endpoints. AI agents, MCP servers, local inference servers, automation workers and similar non-human workloads need a parallel identity track. Treat them as privileged non-human workloads with their own trust boundary, not as another device class. Ordinary Entra user groups alone do not provide complete identity controls for autonomous workloads.
+
+Human path:
+
+```text
+Human Identity
+  -> Active Directory / Entra ID
+  -> 802.1X / RADIUS / NPS
+  -> User Network Role
+  -> VLAN / ACL
+```
+
+Non-human path (reference architecture; the network half is implemented here, the workload-identity half is a documented pattern, not shipped code):
+
+```text
+AI / Automation Workload
+  -> Workload / Service Identity (service principal, managed identity, automation account)
+  -> Authorization Policy (which tools, APIs and data the workload may use)
+  -> AI / Automation Trust Zone (VLAN 50, deny-by-default ingress ACL)
+  -> Firewall / ACL
+  -> Explicitly Authorized Resources (named hosts and ports only)
+```
+
+Network segmentation and workload identity are complementary controls. The VLAN and its ingress ACL constrain where packets may go; the workload identity constrains which workload may act and with what credentials. Either control alone is insufficient: a VLAN without workload identity cannot distinguish a legitimate agent from a compromised tool server on the same segment, and a workload identity without network enforcement cannot stop a compromised agent from reaching the management network.
+
+Do not claim Intune manages server-side AI agents. Intune manages endpoints: device compliance state and certificate deployment (SCEP/EAP-TLS) for machines that humans use. The composition that protects the AI zone from the user side is therefore two-stage: Intune compliance plus RADIUS decides whether a device receives Corporate VLAN 10 at all, and the VLAN10_IN SVI ACL then permits that VLAN exactly one AI destination (the approved application interface at 10.50.0.10 tcp 443). A noncompliant device lands in Quarantine VLAN 40, whose ACL has no AI permit. Endpoint authentication (who the device is) stays distinct from AI workload authorization (what the agent may do).
+
+Practical workload identity guidance:
+
+- Give each agent runtime, MCP server and automation worker its own identity (service principal or managed identity where the platform supports it). Never share one automation credential across unrelated workloads.
+- Scope each identity to least privilege: only the APIs, key vaults and data stores that workload needs.
+- Isolate credentials per workload (dedicated vault entries/scope); a compromised MCP server must not yield the inference server's keys.
+- Rotate and audit workload credentials independently of human credential lifecycles.
+- Bind the identity to the network policy in documentation and change control: when a workload is decommissioned, remove both its identity grants and its AI trust zone exceptions in the same change.
+
 ## Permissions and authentication
 
 Use separate least-privilege principals for setup and runtime. Install a reviewed version of `Microsoft.Graph.Authentication` on PowerShell 7 (`Install-Module Microsoft.Graph.Authentication -Scope CurrentUser`) and record/pin the accepted version in your execution image. Connect explicitly. Runtime app permissions: `DeviceManagementManagedDevices.Read.All`, `GroupMember.Read.All`, `Device.Read.All`. Group publishing requires `Group.ReadWrite.All`; profile publishing requires `DeviceManagementConfiguration.ReadWrite.All`. Grant admin consent, audit app credentials, and use managed identity where available or a certificate-backed app. Intune and applicable Entra dynamic-group licensing are prerequisites.

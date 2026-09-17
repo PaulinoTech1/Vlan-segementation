@@ -25,5 +25,9 @@ golden_l2_interfaces:
   mode: access
   access:
     vlan: 10
+- name: GigabitEthernet1/0/4
+  mode: access
+  access:
+    vlan: 10
 golden_acls: []
 golden_bindings: []

@@ -7,6 +7,8 @@
 5. Install Ansible on Linux, replace inventory addresses, load the vault and verify SSH keys. Render golden models and audit with a single-host `--limit`.
 6. Review drift, enforce with a change ticket, and verify network reachability and boundaries before advancing. Serial execution stops on failure but is not data-plane verification.
 
+For the AI/Automation trust zone (topologies 2 and 3), approve and record the `ai_trust_zone` values (approved resolver, NTP source, internal services, egress destinations) before first enforcement; an empty or wrong approved list either breaks agent workloads or silently permits nothing useful. Run `ansible-playbook playbooks/validate-ai-trust-zone.yml` before every enforce run that touches the AI boundary, and re-run the lab rows in `docs/ai-network-validation.md` after any AI policy change.
+
 ## Ownership
 
 Listed VLAN IDs/names/active state are merged; foreign VLANs are neither removed nor declared compliant. Listed L2 interfaces are authoritative for access/trunk mode, access VLAN, native VLAN and allowed VLANs. Named ACL contents are replaced, removing extra ACEs. SVI ACL bindings are reasserted. Routing, HSRP, AAA, DTP, port-security, shutdown and STP are outside this role and require full golden-config review during lifecycle changes.

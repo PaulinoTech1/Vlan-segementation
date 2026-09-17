@@ -49,9 +49,14 @@
           "name": "GigabitEthernet1/0/3",
           "kind": "iot",
           "vlan": 10
+        },
+        {
+          "name": "GigabitEthernet1/0/4",
+          "kind": "ai",
+          "vlan": 10
         }
       ],
-      "unused_range": "GigabitEthernet1/0/4 - 22"
+      "unused_range": "GigabitEthernet1/0/5 - 22"
     }
   ]
 }

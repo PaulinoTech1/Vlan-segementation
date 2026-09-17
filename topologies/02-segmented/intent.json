@@ -24,6 +24,11 @@
       "prefix": "10.40.0"
     },
     {
+      "id": 50,
+      "name": "AI_AUTOMATION",
+      "prefix": "10.50.0"
+    },
+    {
       "id": 99,
       "name": "MANAGEMENT",
       "prefix": "10.99.0"
@@ -34,6 +39,37 @@
       "prefix": "10.255.255"
     }
   ],
+  "ai_trust_zone": {
+    "description": "Reference policy inputs for the AI/Automation trust zone. All values are examples; replace with approved enterprise values.",
+    "approved_dns": "10.99.0.53",
+    "approved_ntp": "10.99.0.123",
+    "approved_egress": [
+      {
+        "host": "203.0.113.10",
+        "port": 443,
+        "description": "Approved external model API (documentation address)"
+      },
+      {
+        "host": "203.0.113.11",
+        "port": 443,
+        "description": "Approved external automation API (documentation address)"
+      }
+    ],
+    "approved_internal_services": [
+      {
+        "host": "10.10.0.25",
+        "port": 443,
+        "description": "Approved internal inference/API server"
+      }
+    ],
+    "user_facing_interfaces": [
+      {
+        "host": "10.50.0.10",
+        "port": 443,
+        "description": "AI application gateway presented to corporate users"
+      }
+    ]
+  },
   "devices": [
     {
       "name": "seg-core",
@@ -104,9 +140,19 @@
           "name": "GigabitEthernet1/0/10",
           "kind": "management",
           "vlan": 99
+        },
+        {
+          "name": "GigabitEthernet1/0/11",
+          "kind": "ai",
+          "vlan": 50
+        },
+        {
+          "name": "GigabitEthernet1/0/12",
+          "kind": "ai",
+          "vlan": 50
         }
       ],
-      "unused_range": "GigabitEthernet1/0/11 - 22"
+      "unused_range": "GigabitEthernet1/0/13 - 22"
     }
   ]
 }

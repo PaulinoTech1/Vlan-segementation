@@ -1,0 +1,27 @@
+---
+# Audit-only entry point: AUDIT -> DETECT DRIFT -> REPORT. Never remediates.
+#
+# Conceptual separation enforced by this repository:
+#   AUDIT      Read device state and compare against the golden desired state
+#              (roles/vlan_enforce with enforce=false; check_mode on every
+#              resource task).
+#   DETECT     ios_vlans / ios_l2_interfaces / ios_acls report changed=true
+#              for any owned resource that differs, including AI trust zone
+#              VLAN existence and naming, trunk membership, SVI ACL presence
+#              and binding, and unauthorized permit entries.
+#   REPORT     A secret-free drift.json is written per host under
+#              artifacts/ansible/; the play succeeds even when drift is found
+#              so reporting never blocks on remediation decisions.
+#   REMEDIATE  Only playbooks/enforce.yml performs writes, and only with
+#              enforce=true plus a change_ticket. Not every detected deviation
+#              should be auto-remediated: see the README section on
+#              auto-remediation risk before scheduling enforcement.
+- name: Audit owned VLAN, switchport and ACL state without writing
+  hosts: switches
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    enforce: false
+  roles:
+    - vlan_enforce

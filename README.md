@@ -16,9 +16,13 @@ flowchart TD
     ACCESS --> CORP[Corporate: VLAN 10]
     ACCESS --> GUEST[Guest: VLAN 10]
     ACCESS --> IOT[IoT: VLAN 10]
+    ACCESS --> AI1[AI agent runtime: VLAN 10]
+    ACCESS --> AI2[MCP / inference server: VLAN 10]
 ```
 
 The intentional baseline shares one endpoint broadcast domain and management network. Port security and SSH restrictions do not provide zone isolation. 802.1X dynamic VLAN assignment and inter-zone ACLs are introduced in topology 2; multiple endpoint VLANs would invalidate the flat baseline.
+
+Example AI agent and automation workloads (AI1, AI2) are deliberately placed inside the same Layer-2 trust domain as conventional endpoints. They share the broadcast domain with user workstations, guests and IoT, which is exactly the risk this baseline documents: a compromised agent can reach any peer directly, steal credentials presented on the segment, access infrastructure management interfaces without an ACL in the path, and exfiltrate over unrestricted outbound connections. See [AI / Automation Workload Segmentation](#ai--automation-workload-segmentation).
 
 ### Segmented Wired Star
 
@@ -30,8 +34,12 @@ flowchart TD
     ACCESS --> GUEST[Guest VLAN 20: dedicated static port]
     ACCESS --> IOT[IoT VLAN 30: dedicated static port]
     ACCESS --> QUAR[Quarantine VLAN 40]
+    ACCESS --> AIZONE[AI / Automation VLAN 50]
+    CORE -.->|VLAN50_IN: deny-by-default| AIZONE
     CORE --> MGMT[Management VLAN 99: NAC / DHCP / DNS / PKI]
 ```
+
+The AI / Automation trust zone is a dedicated VLAN (50, 10.50.0.0/24) for agent runtimes, MCP servers, local inference servers, automation workers and API orchestration services. Inter-zone traffic is enforced at the core SVI by the deny-by-default VLAN50_IN ingress ACL (dashed edge): only the approved resolver, NTP source, explicitly approved internal services and explicitly approved egress destinations are permitted. Corporate users reach exactly one AI destination, the application interface at 10.50.0.10 tcp 443. See [AI / Automation Workload Segmentation](#ai--automation-workload-segmentation).
 
 ### High-Availability Segmented Star
 
@@ -43,10 +51,10 @@ flowchart TD
     C1 <-->|Gi1/0/2 inter-core trunk| C2
     C1 -->|Gi1/0/1 to Gi1/0/23| A[ha-access]
     C2 -.->|Gi1/0/1 to Gi1/0/24: STP alternate| A
-    A --> E[Corporate / Guest / IoT / Quarantine]
+    A --> E[Corporate / Guest / IoT / Quarantine / AI-Automation]
 ```
 
-Two independent trunks dual-home the access switch. RSTP changes the forwarding path; HSRPv2 retains the `.1` gateways. Core 1 uses `.2`, core 2 `.3`. DTP is disabled: explicit allowed VLANs prevent unintended negotiation. Independent cores must not share an ordinary LACP port-channel without a supported stack/MLAG design. See [HA and VRRP alternative](docs/ha.md).
+Two independent trunks dual-home the access switch. RSTP changes the forwarding path; HSRPv2 retains the `.1` gateways. Core 1 uses `.2`, core 2 `.3`. DTP is disabled: explicit allowed VLANs prevent unintended negotiation. Independent cores must not share an ordinary LACP port-channel without a supported stack/MLAG design. The AI VLAN exists on both cores with HSRP group 50 (VIP 10.50.0.1) and identical VLAN50_IN ACLs; see [HA and VRRP alternative](docs/ha.md).
 
 ## Identity flow
 
@@ -70,6 +78,50 @@ sequenceDiagram
 
 Intune delivers certificates; Entra dynamic groups scope eligible devices; RADIUS authorizes the VLAN. Conditional Access does not configure switch ports. The evaluator needs a NAC adapter and is not an NPS plugin. Traditional NPS uses AD-backed identity mapping rather than native Graph compliance evaluation. See [integration and NPS deployment](docs/identity-integration.md).
 
+### AI / Automation Workload Segmentation
+
+AI agents, MCP servers, local inference servers, automation workers and API orchestration services are treated as privileged non-human workloads with their own trust boundary, not as another user device class.
+
+**Topology 1 intentionally demonstrates the risk of AI workloads operating inside a flat trust domain. Topologies 2 and 3 introduce a dedicated AI / Automation Trust Zone.**
+
+1. Autonomous agents are a distinct workload class because they act without a human in the loop, hold credentials to many systems at once, and can be steered by malicious input (prompt injection) into misusing legitimate tools. A compromised agent does not just read data; it executes.
+2. AI workloads must not inherit user-network trust because their blast radius differs from a workstation's: they aggregate credentials, run continuously, and are reachable by design from automation pipelines. Placing them in the user VLAN would extend every agent compromise into every workstation and vice versa.
+3. Network isolation alone is insufficient. A VLAN without workload identity cannot distinguish a legitimate agent from a compromised tool server on the same segment; without least-privilege egress and allowlisted destinations, a segmented agent can still exfiltrate or pivot through permitted paths. Defense here is segmentation plus identity plus policy plus monitoring.
+4. Workload identity complements VLAN segmentation: the VLAN and its ingress ACL constrain where packets may go, while a per-workload identity (service principal, managed identity, dedicated automation account) constrains which workload may act and which credentials it holds. See [human versus non-human identity](docs/identity-integration.md#human-identity-versus-non-human-workload-identity).
+5. Least-privilege egress reduces exposure because most agent compromises monetize through outbound connections (data exfiltration, C2, unapproved model APIs). VLAN50_IN permits only named destinations and ports: the approved resolver and NTP source, explicitly approved internal services, and explicitly approved external HTTPS endpoints. Everything else, including arbitrary RFC1918 space and the open Internet, denies.
+6. Ansible detects drift affecting the AI trust boundary in two layers. `playbooks/audit_only.yml` audits device state against the golden desired state and reports a secret-free `drift.json` without writing. `playbooks/validate-ai-trust-zone.yml` validates the desired state itself offline: VLAN 50 presence and naming, trunk membership, VLAN50_IN presence and Vlan50 binding, absence of broad permit rules, absence of non-established AI-to-management permits, deny-all ordering, and ha-core1 versus ha-core2 consistency. `playbooks/enforce.yml` is the only writer and requires a change ticket.
+7. Across topologies: Topology 1 keeps example AI workloads inside the single VLAN 10 broadcast domain as the documented risk baseline. Topology 2 adds the AI/Automation VLAN 50 with the deny-by-default VLAN50_IN ingress ACL on the core SVI. Topology 3 carries the same trust zone across both redundant cores with HSRP group 50 and identical ACLs.
+
+```mermaid
+flowchart LR
+    AGENT[AI Agent] --> WID[Workload Identity]
+    WID --> AVLAN[AI / Automation VLAN 50]
+    AVLAN --> FWACL[Firewall / ACL]
+    FWACL --> SVC[Explicitly Approved Services]
+```
+
+Default-denied relationships (X marks denied connectivity):
+
+```mermaid
+flowchart TD
+    AGENT[AI Agent] -->|X| MGMT[Management Network]
+    AGENT -->|X| USERS[User Endpoints]
+    AGENT -->|X| GUEST[Guest Network]
+    AGENT -->|X| IOT[IoT Network]
+    USERS -->|Only 10.50.0.10 tcp 443| GATEWAY[AI Application Gateway]
+```
+
+Default AI VLAN policy intent (implemented in `scripts/render.py`, function `ai_acl`):
+
+- AI_AUTOMATION to USER_VLAN, GUEST_VLAN, MANAGEMENT_VLAN, IOT_VLAN: DENY
+- AI_AUTOMATION to corporate servers: DENY except the explicitly approved inference/API service
+- AI_AUTOMATION to DNS/NTP: ALLOW the approved resolver and NTP source only
+- AI_AUTOMATION to Internet: ALLOW only the explicitly approved HTTPS egress destinations
+- MANAGEMENT_VLAN to AI_AUTOMATION: administrative protocols allowed; the stateless return path is an `established`-only ACE, so AI-initiated connections to management still deny
+- USER_VLAN to AI_AUTOMATION: ALLOW only the approved user-facing application interface
+
+Reference values (VLAN 50, 10.50.0.0/24, AI_AUTOMATION) are examples driven by the `ai_trust_zone` block in each segmented `intent.json`; change them there and regenerate. Further reading: [AI agent threat model](docs/ai-agent-threat-model.md), [AI network validation](docs/ai-network-validation.md), [AI trust zone logging](docs/ai-trust-zone-logging.md).
+
 ## Repository structure
 
 ```text
@@ -82,13 +134,15 @@ ansible/
   inventory.ini, ansible.cfg, requirements.yml, requirements.txt
   group_vars/all.yml
   golden/          generated per-switch resource models
-  playbooks/       audit.yml, enforce.yml
+  playbooks/       audit_only.yml, enforce.yml, validate-ai-trust-zone.yml
+                   (audit.yml is a backwards-compatibility shim)
   roles/vlan_enforce/tasks/{main,resources}.yml
 intune_entra_id/
   scripts/         Graph helpers, group/SCEP publishing, compliance export
   policies/        dynamic device group and SCEP JSON
   radius/          fail-closed evaluator and vendor-neutral adapter contract
-docs/              addressing, deployment, identity, HA, validation
+docs/              addressing, deployment, identity, HA, validation,
+                   ai-agent-threat-model, ai-network-validation, ai-trust-zone-logging
 scripts/           deterministic renderer and validator
 tests/             authorization and traffic-boundary tests
 .github/workflows/ offline checks and Ansible syntax validation
@@ -99,6 +153,7 @@ tests/             authorization and traffic-boundary tests
 | Decision | Reason / boundary |
 |---|---|
 | Corporate, Guest, IoT, Management, Quarantine | Routed isolation; same-VLAN peers need additional controls |
+| AI / Automation trust zone (VLAN 50) | Privileged non-human workloads get deny-by-default policy, not user trust; a VLAN alone is not sufficient protection |
 | SVI ingress ACLs | Restricted infrastructure exceptions; stateless, not a firewall replacement |
 | Static dedicated Guest/IoT ports | Supports non-802.1X devices without corporate MAB fallback |
 | Certificate plus current compliance | Possessing a certificate alone does not prove device health |
@@ -134,21 +189,24 @@ cd ansible
 export NETWORK_USER=network-automation
 # Store vault_network_password and vault_enable_password in this encrypted file.
 ansible-vault create ../artifacts/network-vault.yml
-ansible-playbook playbooks/audit.yml --limit seg-access \
+ansible-playbook playbooks/audit_only.yml --limit seg-access \
   -e @../artifacts/network-vault.yml --ask-vault-pass
+ansible-playbook playbooks/validate-ai-trust-zone.yml
 ansible-playbook playbooks/enforce.yml --limit seg-access --check \
   -e change_ticket=CHG-1234 -e @../artifacts/network-vault.yml --ask-vault-pass
 ansible-playbook playbooks/enforce.yml --limit seg-access \
   -e change_ticket=CHG-1234 -e @../artifacts/network-vault.yml --ask-vault-pass
 ```
 
-Audit writes a secret-free `drift.json` under `artifacts/ansible/` and succeeds even when drift is found. Enforcement backs up first, changes one switch at a time, checks convergence and then saves. Its `--check` mode audits without switch writes. Device results are suppressed to protect secrets. Read the ownership and ACL-update limitations before scheduling automatic remediation.
+Audit writes a secret-free `drift.json` under `artifacts/ansible/` and succeeds even when drift is found. Enforcement backs up first, changes one switch at a time, checks convergence and then saves. Its `--check` mode audits without switch writes. Device results are suppressed to protect secrets.
+
+Automatic remediation carries operational risk: enforcement reconciles devices toward the golden desired state, so a stale repository or an undocumented emergency change gets reverted as if it were drift. An intentional manual change applied during an incident (for example, a temporary AI egress exception) will be removed by the next enforce run unless it is first recorded in `intent.json` and regenerated. Treat every non-empty `drift.json` as a decision, not a command: audit and report on a schedule, and enforce only with a reviewed change ticket after confirming the desired state matches intent. This applies doubly to the AI trust zone, where an automatic revert can either reopen a broad permit or break a legitimate workload with no human in the loop to notice.
 
 For Intune, follow [the PowerShell workflow](docs/identity-integration.md): pilot group, root certificate, SCEP profile, wired EAP-TLS profile, then the NAC adapter. No tenant IDs, real credentials or private certificate material are included.
 
 ## Validation scope
 
-CI parses data and PowerShell, verifies deterministic generated files, runs authorization/boundary tests, syntax-checks Ansible, validates Cisco resource schemas, and renders switchport/ACL commands offline. It does not emulate IOS, issue certificates, verify Graph permissions or prove HA convergence. Dependency pins provide repeatability and need periodic review.
+CI parses data and PowerShell, verifies deterministic generated files, runs authorization/boundary tests, syntax-checks Ansible, validates Cisco resource schemas, and renders switchport/ACL commands offline. AI trust zone checks include the `test_ai_*` boundary tests, the `validate-ai-trust-zone.yml` desired-state assertions (broad-permit detection, established-only management return, deny-all ordering, HA core consistency), and the `scripts/validate.py` topology invariants (VLAN 50 present in topologies 2 and 3, absent from topology 1). It does not emulate IOS, issue certificates, verify Graph permissions or prove HA convergence. Dependency pins provide repeatability and need periodic review.
 
 ## References
 

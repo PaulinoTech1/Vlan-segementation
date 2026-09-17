@@ -1,0 +1,161 @@
+---
+# Offline desired-state validation for the AI/Automation trust zone.
+#
+# No device I/O: this playbook audits the generated golden resource models
+# (ansible/golden/*.yml) that roles/vlan_enforce reconciles against devices.
+# Run it in CI and before any enforce.yml run that touches the AI boundary.
+#
+# Failure scenarios covered here:
+#   - AI VLAN missing, misnamed, or missing from a trunk allowed list
+#   - VLAN50_IN ACL missing, unbound from Vlan50, or not ending in deny-all
+#   - Unauthorized broad permit rules (e.g. 'permit ip <ai-subnet> any')
+#   - Accidental permissive AI-to-management rule (any non-established
+#     permit toward 10.99.0.0/24)
+#   - Permit ACEs shadowed by earlier denies (first-match ordering)
+#   - ACL/VLAN/trunk drift between the redundant HA cores (split config)
+# Live failure modes (gateway loss, uplink loss, STP convergence) are
+# exercised in the lab per docs/ha.md and docs/ai-network-validation.md.
+- name: Validate AI/Automation trust zone desired state (offline)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # Fully offline playbook: no device sessions, so neutralize the
+    # credential variables inherited from group_vars/all.yml.
+    ansible_connection: local
+    ansible_user: ""
+    ansible_password: ""
+    ansible_become: false
+    ansible_become_password: ""
+    ai_zone_devices:
+      - seg-core
+      - seg-access
+      - ha-core1
+      - ha-core2
+      - ha-access
+    ai_zone_cores:
+      - seg-core
+      - ha-core1
+      - ha-core2
+  tasks:
+    - name: Load golden desired-state models
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../golden/{{ item }}.yml"
+        name: "golden_{{ item | replace('-', '_') }}"
+      loop: "{{ ai_zone_devices }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Index golden models by device
+      ansible.builtin.set_fact:
+        goldens: "{{ goldens | default({}) | combine({item: lookup('vars', 'golden_' + (item | replace('-', '_')))}) }}"
+      loop: "{{ ai_zone_devices }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: VLAN 50 exists and is named AI_AUTOMATION
+      ansible.builtin.assert:
+        that:
+          - item.value.golden_vlans | selectattr('vlan_id', 'equalto', 50)
+            | map(attribute='name') | list == ['AI_AUTOMATION']
+        fail_msg: "{{ item.key }}: VLAN 50 missing or misnamed (AI trust zone drift)"
+      loop: "{{ goldens | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Every trunk carries the AI VLAN
+      ansible.builtin.assert:
+        that:
+          - item.value.golden_l2_interfaces | selectattr('trunk', 'defined')
+            | map(attribute='trunk') | map(attribute='allowed_vlans')
+            | reject('search', '(^|,)50(,|$)') | list | length == 0
+        fail_msg: "{{ item.key }}: trunk allowed list missing VLAN 50"
+      loop: "{{ goldens | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: AI access ports are assigned to VLAN 50
+      ansible.builtin.assert:
+        that:
+          - item.value.golden_l2_interfaces | selectattr('access', 'defined')
+            | map(attribute='access') | map(attribute='vlan')
+            | select('equalto', 50) | list | length > 0
+        fail_msg: "{{ item.key }}: no access port assigned to VLAN 50"
+      loop: "{{ goldens | dict2items }}"
+      when: item.key in ['seg-access', 'ha-access']
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: VLAN50_IN is defined and bound to Vlan50 on every core
+      ansible.builtin.assert:
+        that:
+          - item.value.golden_acls | length > 0
+          - item.value.golden_acls[0].acls | selectattr('name', 'equalto', 'VLAN50_IN') | list | length == 1
+          - item.value.golden_bindings | selectattr('interface', 'equalto', 'Vlan50')
+            | map(attribute='acl') | list == ['VLAN50_IN']
+        fail_msg: "{{ item.key }}: VLAN50_IN missing or not bound to Vlan50"
+      loop: "{{ goldens | dict2items }}"
+      when: item.key in ai_zone_cores
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Collect VLAN50_IN ACEs per core
+      ansible.builtin.set_fact:
+        ai_acl_aces: "{{ ai_acl_aces | default({}) | combine({item.key: (item.value.golden_acls[0].acls | selectattr('name', 'equalto', 'VLAN50_IN') | first).aces}) }}"
+      loop: "{{ goldens | dict2items }}"
+      when: item.key in ai_zone_cores
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Reject unauthorized broad permit ACEs in VLAN50_IN
+      ansible.builtin.assert:
+        that:
+          - not (item.1.grant == 'permit' and item.1.protocol == 'ip'
+                 and (item.1.destination.any | default(false)))
+        fail_msg: "{{ item.0.key }}: broad permit ACE seq {{ item.1.sequence }} violates deny-by-default"
+      loop: "{{ ai_acl_aces | dict2items | subelements('value') }}"
+      loop_control:
+        label: "{{ item.0.key }} seq {{ item.1.sequence }}"
+
+    - name: Reject permissive AI-to-management rules (established return only)
+      ansible.builtin.assert:
+        that:
+          - item.1.destination.address | default('') != '10.99.0.0'
+            or (item.1.protocol_options.tcp.established | default(false))
+        fail_msg: "{{ item.0.key }}: ACE seq {{ item.1.sequence }} permits AI-initiated management access"
+      when: item.1.grant == 'permit'
+      loop: "{{ ai_acl_aces | dict2items | subelements('value') }}"
+      loop_control:
+        label: "{{ item.0.key }} seq {{ item.1.sequence }}"
+
+    - name: Verify VLAN50_IN ends with an explicit deny-all
+      ansible.builtin.assert:
+        that:
+          - (item.value | last).grant == 'deny'
+          - (item.value | last).protocol == 'ip'
+          - ((item.value | last).destination.any | default(false))
+        fail_msg: "{{ item.key }}: VLAN50_IN must end with deny ip any any"
+      loop: "{{ ai_acl_aces | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Verify no permit ACE is shadowed by an earlier deny
+      ansible.builtin.assert:
+        that:
+          - (item.value | map(attribute='grant') | list).index('deny')
+            == (item.value | selectattr('grant', 'equalto', 'permit') | list | length)
+        fail_msg: "{{ item.key }}: permit ACE after a deny would never match (first-match order)"
+      loop: "{{ ai_acl_aces | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Verify redundant cores share identical AI desired state
+      ansible.builtin.assert:
+        that:
+          - goldens['ha-core1'].golden_acls == goldens['ha-core2'].golden_acls
+          - goldens['ha-core1'].golden_vlans == goldens['ha-core2'].golden_vlans
+          - ha1_trunks == ha2_trunks
+        fail_msg: "Split configuration between ha-core1 and ha-core2 (AI trust zone)"
+      vars:
+        ha1_trunks: "{{ goldens['ha-core1'].golden_l2_interfaces | selectattr('trunk', 'defined') | map(attribute='trunk') | map(attribute='allowed_vlans') | sort }}"
+        ha2_trunks: "{{ goldens['ha-core2'].golden_l2_interfaces | selectattr('trunk', 'defined') | map(attribute='trunk') | map(attribute='allowed_vlans') | sort }}"
