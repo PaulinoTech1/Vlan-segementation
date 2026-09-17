@@ -1,10 +1,7 @@
 ---
-- name: Audit owned VLAN, switchport and ACL state without writing
-  hosts: switches
-  gather_facts: false
-  serial: 1
-  any_errors_fatal: true
-  vars:
-    enforce: false
-  roles:
-    - vlan_enforce
+# Backwards-compatibility shim. The audit entry point is now
+# playbooks/audit_only.yml, which documents the AUDIT -> DETECT DRIFT ->
+# REPORT separation. This file is kept so existing references and CI steps
+# that call playbooks/audit.yml continue to work.
+- name: Audit via the audit-only entry point
+  ansible.builtin.import_playbook: audit_only.yml

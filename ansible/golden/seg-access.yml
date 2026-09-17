@@ -15,6 +15,10 @@ golden_vlans:
   name: QUARANTINE
   state: active
   shutdown: disabled
+- vlan_id: 50
+  name: AI_AUTOMATION
+  state: active
+  shutdown: disabled
 - vlan_id: 99
   name: MANAGEMENT
   state: active
@@ -28,7 +32,7 @@ golden_l2_interfaces:
   mode: trunk
   trunk:
     native_vlan: 999
-    allowed_vlans: 10,20,30,40,99
+    allowed_vlans: 10,20,30,40,50,99
 - name: GigabitEthernet1/0/1
   mode: access
   access:
@@ -69,5 +73,13 @@ golden_l2_interfaces:
   mode: access
   access:
     vlan: 99
+- name: GigabitEthernet1/0/11
+  mode: access
+  access:
+    vlan: 50
+- name: GigabitEthernet1/0/12
+  mode: access
+  access:
+    vlan: 50
 golden_acls: []
 golden_bindings: []

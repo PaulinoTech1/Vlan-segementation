@@ -8,12 +8,13 @@ All addresses are examples; reserve actual ranges through IPAM.
 | 20 Guest | 10.20.0.0/24 | 10.20.0.1 | DNS, NTP, Internet |
 | 30 IoT | 10.30.0.0/24 | 10.30.0.1 | DNS, NTP; add reviewed controller exceptions |
 | 40 Quarantine | 10.40.0.0/24 | 10.40.0.1 | DNS, NTP, HTTPS remediation proxy |
+| 50 AI/Automation | 10.50.0.0/24 | 10.50.0.1 (HSRP VIP in topology 3) | Approved DNS/NTP, approved internal services, controlled egress; deny-by-default |
 | 99 Management | 10.99.0.0/24 | 10.99.0.1 | Trusted administration and infrastructure |
 | 999 Unused native | No SVI | None | Parking/native VLAN; excluded from trunks |
 
 Management services: RADIUS `.10` and `.11`, DHCP `.20`, PKI/remediation proxy `.25`, admin jump host `.50`, DNS `.53`, NTP `.123`. The proxy must allow required Intune, Entra, enrollment and revocation destinations; this repository does not maintain Microsoft's changing endpoint list. Guest DNS should expose only approved public zones. Management is a trusted zone without an ingress ACL here; host firewalls and restricted physical access remain necessary.
 
-Core Gi1/0/1 connects to access Gi1/0/23. Core Gi1/0/24 is the firewall transit. HA core2 Gi1/0/1 connects to access Gi1/0/24, and core Gi1/0/2 links the cores. Access Gi1/0/1 is EAP-TLS (static VLAN 40 until authorized), Gi1/0/2 Guest, Gi1/0/3 IoT. In segmented examples, Gi1/0/4–10 are physically secured Management ports for NAC1, NAC2, DHCP, proxy, jump host, DNS and NTP respectively. These are single-MAC server ports, not hypervisor trunks. Spread redundant services across independent infrastructure switches in production. Unused ports are shut. Flat management uses access 10.10.0.12; the external admin source 10.99.0.50 must be routed through the firewall.
+Core Gi1/0/1 connects to access Gi1/0/23. Core Gi1/0/24 is the firewall transit. HA core2 Gi1/0/1 connects to access Gi1/0/24, and core Gi1/0/2 links the cores. Access Gi1/0/1 is EAP-TLS (static VLAN 40 until authorized), Gi1/0/2 Guest, Gi1/0/3 IoT. In segmented examples, Gi1/0/4–10 are physically secured Management ports for NAC1, NAC2, DHCP, proxy, jump host, DNS and NTP respectively. These are single-MAC server ports, not hypervisor trunks. Gi1/0/11–12 are AI/Automation access ports (VLAN 50) for agent runtimes, MCP servers and inference hosts; in the flat topology the example AI port Gi1/0/4 sits on VLAN 10, sharing the single broadcast domain. Spread redundant services across independent infrastructure switches in production. Unused ports are shut. Flat management uses access 10.10.0.12; the external admin source 10.99.0.50 must be routed through the firewall.
 
 DHCP: reserve `.1–.20`, set option 3 to gateway `.1` and option 6 to 10.99.0.53. Configure one scope per routed VLAN and verify relay `giaddr`. Management services use static/reserved addresses. Flat DHCP at 10.99.0.20 requires firewall routing to that service.
 
