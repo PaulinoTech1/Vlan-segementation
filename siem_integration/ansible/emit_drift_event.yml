@@ -1,0 +1,181 @@
+---
+# emit_drift_event.yml
+#
+# Example: turn Ansible configuration-drift artifacts into structured,
+# SIEM-ready JSON events without changing any enforcement behavior.
+#
+# Conceptual workflow:
+#
+#   Ansible Audit (playbooks/audit_only.yml)
+#        |
+#        v
+#   Drift Detected (per-host drift.json under artifact_dir)
+#        |
+#        +---- Human-readable output (stdout summary, always)
+#        |
+#        +---- Structured JSON event (one file per drifted object class,
+#        |      written only when siem_export_enabled=true)
+#                    |
+#                    v
+#              SIEM Collector (site-owned; this example only writes local
+#              JSON files for the collector to pick up)
+#
+# This playbook uses ONLY ansible.builtin modules so it can be syntax
+# checked offline with no network collections installed.
+#
+# SECURITY NOTES
+# - drift.json artifacts are secret-free by design (the vlan_enforce role
+#   writes only booleans: host, vlans, switchports, acls, bindings). This
+#   playbook reads booleans only and never logs or transmits credentials.
+# - No SIEM token, API key, or endpoint is hard-coded anywhere in this file.
+# - External transmission is DISABLED BY DEFAULT (siem_export_enabled: false).
+#   With the default settings this playbook only prints a stdout summary.
+# - Fail-closed: an enabled export with an unsupported method, or an https
+#   method with no endpoint, aborts the run with a clear message.
+#
+# Example invocation after an audit run:
+#   ansible-playbook emit_drift_event.yml \
+#     -e artifact_dir=/path/to/audit/artifacts \
+#     -e siem_export_enabled=true
+- name: Emit structured configuration-drift events for SIEM ingestion
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    # Pass the audit artifact directory from the audit run, e.g.
+    # -e artifact_dir=/var/tmp/vlan-audit/artifacts
+    # Default is an intentional placeholder; the run fails closed if the
+    # directory does not exist.
+    artifact_dir: "/path/to/audit/artifacts"
+
+    # SIEM export controls. All export is disabled by default.
+    siem_export_enabled: false
+    siem_export_method: "local_json"
+    siem_export_dir: "{{ playbook_dir }}/../../artifacts/siem"
+    siem_export_endpoint: ""
+
+    # Object classes present in drift.json, mapped to readable text.
+    # Values below are fictional examples consistent with the repository's
+    # documented golden models (VLAN 50, AI_AUTOMATION zone).
+    drift_classes:
+      - vlans
+      - switchports
+      - acls
+      - bindings
+    drift_expected:
+      vlans: "VLAN database matches the golden model"
+      switchports: "Access and trunk port configuration matches the golden model"
+      acls: "ACL content matches the golden model (deny by default, approved exceptions only)"
+      bindings: "ACLs are bound to the intended VLAN interfaces"
+    drift_observed:
+      vlans: "VLAN database differs from the golden model (example: VLAN 50 missing from a trunk allowed list)"
+      switchports: "Switchport configuration differs from the golden model (example: AI automation port not on VLAN 50)"
+      acls: "ACL content differs from the golden model (example: unexpected permit ACE in VLAN50_IN)"
+      bindings: "ACL to interface binding differs from the golden model"
+    drift_severity:
+      vlans: "high"
+      switchports: "medium"
+      acls: "high"
+      bindings: "high"
+
+  tasks:
+    - name: Validate the requested export method
+      ansible.builtin.fail:
+        msg: "siem_export_method must be 'local_json' or 'https'. Refusing to proceed with an unknown method."
+      when: siem_export_enabled | bool and siem_export_method not in ["local_json", "https"]
+
+    - name: Require an explicit endpoint before any https delivery is attempted
+      ansible.builtin.fail:
+        msg: "siem_export_endpoint is empty. Refusing to attempt https delivery without an explicit endpoint."
+      when: siem_export_enabled | bool and siem_export_method == "https" and siem_export_endpoint | length == 0
+
+    - name: Refuse network transmission because https delivery is out of scope for this example
+      ansible.builtin.fail:
+        msg: "https delivery is not implemented in this example. Use siem_export_method=local_json and let the site collector forward the files."
+      when: siem_export_enabled | bool and siem_export_method == "https"
+
+    - name: Record a single UTC timestamp for this run
+      ansible.builtin.set_fact:
+        event_ts: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+        event_id_ts: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+
+    - name: Check that the audit artifact directory exists
+      ansible.builtin.stat:
+        path: "{{ artifact_dir }}"
+      register: artifact_dir_stat
+
+    - name: Fail closed when the audit artifact directory is missing
+      ansible.builtin.fail:
+        msg: "artifact_dir '{{ artifact_dir }}' does not exist. Run the audit playbook first, then pass -e artifact_dir=<path to audit artifacts>."
+      when: not artifact_dir_stat.stat.exists
+
+    - name: Locate per-host drift artifacts from the audit run
+      ansible.builtin.find:
+        paths: "{{ artifact_dir }}"
+        patterns: "drift.json"
+        recurse: true
+        file_type: file
+      register: drift_files
+
+    - name: Read each drift.json artifact
+      # drift.json is secret-free by design (booleans only); nothing read
+      # here is ever logged beyond the drift booleans themselves.
+      ansible.builtin.slurp:
+        src: "{{ item.path }}"
+      loop: "{{ drift_files.files }}"
+      register: drift_slurps
+
+    - name: Decode drift artifacts into reports
+      ansible.builtin.set_fact:
+        drift_reports: "{{ drift_reports | default([]) + [(item.content | b64decode | from_json)] }}"
+      loop: "{{ drift_slurps.results }}"
+      when: drift_slurps.results | length > 0
+
+    - name: Build one structured event per drifted object class
+      ansible.builtin.set_fact:
+        drift_events: "{{ drift_events | default([]) + [event] }}"
+      vars:
+        event:
+          timestamp: "{{ event_ts }}"
+          event_type: "configuration_drift"
+          severity: "{{ drift_severity[item.1] }}"
+          device: "{{ item.0.host }}"
+          configuration_object: "{{ item.1 }}"
+          expected_state: "{{ drift_expected[item.1] }}"
+          observed_state: "{{ drift_observed[item.1] }}"
+          remediation: "not_performed"
+          correlation_id: "{{ item.0.host }}-{{ item.1 }}-{{ event_id_ts }}"
+          message: "Configuration drift detected on {{ item.0.host }}: {{ item.1 }} differs from the golden model"
+      loop: "{{ (drift_reports | default([])) | product(drift_classes) | list }}"
+      when: (item.0.get(item.1, false)) | bool
+
+    - name: Print a human-readable drift summary
+      ansible.builtin.debug:
+        msg: "DRIFT device={{ item.device }} object={{ item.configuration_object }} severity={{ item.severity }} expected='{{ item.expected_state }}' observed='{{ item.observed_state }}'"
+      loop: "{{ drift_events | default([]) }}"
+      when: drift_events | default([]) | length > 0
+
+    - name: Report when no drift was found
+      ansible.builtin.debug:
+        msg: "No configuration drift detected across {{ drift_files.files | length }} audited host artifact(s)."
+      when: drift_events | default([]) | length == 0
+
+    - name: Confirm nothing is exported when export is disabled
+      ansible.builtin.debug:
+        msg: "siem_export_enabled=false: events were reported to stdout only. Nothing was written to disk or transmitted."
+      when: not (siem_export_enabled | bool)
+
+    - name: Create the local SIEM export directory
+      ansible.builtin.file:
+        path: "{{ siem_export_dir }}"
+        state: directory
+        mode: "0700"
+      when: siem_export_enabled | bool and siem_export_method == "local_json"
+
+    - name: Write one JSON event file per drifted object class
+      ansible.builtin.copy:
+        content: "{{ item | to_nice_json }}"
+        dest: "{{ siem_export_dir }}/{{ item.correlation_id }}.json"
+        mode: "0600"
+      loop: "{{ drift_events | default([]) }}"
+      when: siem_export_enabled | bool and siem_export_method == "local_json"
